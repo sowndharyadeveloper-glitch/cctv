@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: present-sir-api
+    runtime: python
+    rootDir: AI_CCTV_Attendance
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 app:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_PATH
+        value: /var/data/attendance.db
+      - key: CORS_ORIGINS
+        value: https://present-sir-rouge.vercel.app
+      - key: FRONTEND_URL
+        value: https://present-sir-rouge.vercel.app
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_COOKIE_SAMESITE
+        value: None
+    disk:
+      name: present-sir-data
+      mountPath: /var/data
+      sizeGB: 1
