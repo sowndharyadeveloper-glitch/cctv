@@ -7,17 +7,18 @@ export class ApiError extends Error {
   }
 }
 
-const configuredApiUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '')
-const isProduction = import.meta.env.PROD
-export const API_BASE_URL = configuredApiUrl
-const productionApiConfigurationError = isProduction && (!/^https:\/\//i.test(configuredApiUrl) || /localhost|127\.0\.0\.1/i.test(configuredApiUrl))
+const rawApiUrl = import.meta.env.VITE_API_URL
+export const API_URL = (rawApiUrl || '').trim().replace(/\/+$/, '')
+export const API_BASE_URL = API_URL
+const productionApiConfigurationError = import.meta.env.PROD && (!API_URL || !/^https:\/\//i.test(API_URL) || /localhost|127\.0\.0\.1/i.test(API_URL))
+const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 90000 : 10000
 
 export async function fetchJson(path, options = {}) {
   if (productionApiConfigurationError) {
     throw new ApiError('Production API URL is not configured. Set VITE_API_URL to the deployed HTTPS backend.', 503, 'API_CONFIGURATION_ERROR')
   }
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), options.timeout ?? 10000)
+  const timeout = setTimeout(() => controller.abort(), options.timeout ?? DEFAULT_TIMEOUT_MS)
   const requestOptions = { ...options, signal: controller.signal }
   delete requestOptions.timeout
 
@@ -47,8 +48,8 @@ export async function fetchJson(path, options = {}) {
     return body
   } catch (error) {
     if (error instanceof ApiError) throw error
-    if (error.name === 'AbortError') throw new ApiError('The API request timed out.', 408, 'TIMEOUT')
-    throw new ApiError('The backend is unavailable.', 0, 'NETWORK_ERROR')
+    if (error.name === 'AbortError') throw new ApiError('The backend is waking up or responding slowly. Please try again in a moment.', 408, 'TIMEOUT')
+    throw new ApiError('Unable to connect to the production API. Check the backend deployment and VITE_API_URL configuration.', 0, 'NETWORK_ERROR')
   } finally {
     clearTimeout(timeout)
   }
