@@ -9,12 +9,13 @@ export class ApiError extends Error {
 
 const configuredApiUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '')
 const isProduction = import.meta.env.PROD
-if (isProduction && (!/^https:\/\//i.test(configuredApiUrl) || /localhost|127\.0\.0\.1/i.test(configuredApiUrl))) {
-  throw new Error('VITE_API_URL must be a deployed HTTPS API URL in production.')
-}
 export const API_BASE_URL = configuredApiUrl
+const productionApiConfigurationError = isProduction && (!/^https:\/\//i.test(configuredApiUrl) || /localhost|127\.0\.0\.1/i.test(configuredApiUrl))
 
 export async function fetchJson(path, options = {}) {
+  if (productionApiConfigurationError) {
+    throw new ApiError('Production API URL is not configured. Set VITE_API_URL to the deployed HTTPS backend.', 503, 'API_CONFIGURATION_ERROR')
+  }
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), options.timeout ?? 10000)
   const requestOptions = { ...options, signal: controller.signal }
