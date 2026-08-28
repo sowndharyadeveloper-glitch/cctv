@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 captured_images/
+
+.venv/
+node_modules/
+dist/.env
+.env.*
