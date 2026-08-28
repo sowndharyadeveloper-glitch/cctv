@@ -1,0 +1,40 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="fw-bold mb-0">Reports</h2>
+    <div>
+        <a href="{{ url_for('export_csv') }}" class="btn btn-outline-primary">CSV</a>
+        <a href="{{ url_for('export_excel') }}" class="btn btn-outline-success">Excel</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h5 class="fw-bold mb-3">Department Summary</h5>
+                {% for item in department_summary %}
+                <div class="d-flex justify-content-between mb-2">
+                    <span>{{ item.department }}</span>
+                    <strong>{{ item.total_present }}</strong>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h5 class="fw-bold mb-3">Monthly Attendance</h5>
+                {% for item in monthly_summary %}
+                <div class="d-flex justify-content-between mb-2">
+                    <span>{{ item.month }}</span>
+                    <strong>{{ item.total }}</strong>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

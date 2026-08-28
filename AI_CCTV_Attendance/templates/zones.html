@@ -1,0 +1,41 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<div class="mb-4">
+    <p class="text-uppercase small fw-bold text-primary mb-1">Safety configuration</p>
+    <h2 class="fw-bold mb-1">Restricted zones</h2>
+    <p class="text-muted mb-0">Define polygon boundaries and rules for camera-based intrusion detection.</p>
+</div>
+<div class="row g-4">
+    <div class="col-xl-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <form id="zone-form">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6"><label class="form-label" for="zone-name">Zone name</label><input class="form-control" id="zone-name" required maxlength="120" placeholder="High voltage room"></div>
+                        <div class="col-md-6"><label class="form-label" for="zone-camera">Camera</label><select class="form-select" id="zone-camera" required>{% for camera in cameras %}<option value="{{ camera.id }}">{{ camera.name }}</option>{% endfor %}</select></div>
+                        <div class="col-md-4"><label class="form-label" for="zone-type">Zone type</label><select class="form-select" id="zone-type"><option value="restricted">Restricted</option><option value="ppe_required">PPE required</option><option value="danger">Danger zone</option></select></div>
+                        <div class="col-md-4"><label class="form-label" for="zone-severity">Severity</label><select class="form-select" id="zone-severity"><option>LOW</option><option>MEDIUM</option><option selected>HIGH</option><option>CRITICAL</option></select></div>
+                        <div class="col-md-4"><label class="form-label" for="zone-ppe">Required PPE</label><input class="form-control" id="zone-ppe" placeholder="Helmet, gloves"></div>
+                    </div>
+                    <div class="zone-canvas-wrap mb-3"><canvas id="zone-canvas" width="900" height="420"></canvas><span class="zone-canvas-hint">Click at least three points to draw a polygon</span></div>
+                    <div class="d-flex justify-content-between align-items-center"><span id="zone-point-count" class="small text-muted">0 points</span><div class="d-flex gap-2"><button class="btn btn-outline-secondary" id="clear-zone" type="button">Clear</button><button class="btn btn-primary" type="submit" {% if not cameras %}disabled{% endif %}>Save zone</button></div></div>
+                    <div id="zone-status" class="small mt-3" role="status"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-5"><div class="card border-0 shadow-sm"><div class="card-body"><h5 class="mb-3">Configured zones</h5><div id="zone-list">{% for zone in zones %}<div class="border rounded p-3 mb-2 d-flex justify-content-between align-items-start" data-zone-id="{{ zone.id }}"><div><strong>{{ zone.name }}</strong><div class="small text-muted">{{ zone.camera_name }} · {{ zone.severity }}</div></div><button class="btn btn-sm btn-outline-danger delete-zone" type="button">Delete</button></div>{% else %}<p class="text-muted mb-0">No restricted zones configured.</p>{% endfor %}</div></div></div></div>
+</div>
+<script>
+const canvas = document.getElementById('zone-canvas');
+const context = canvas.getContext('2d');
+const points = [];
+function redraw() { context.clearRect(0, 0, canvas.width, canvas.height); context.fillStyle = '#111827'; context.fillRect(0, 0, canvas.width, canvas.height); context.strokeStyle = '#38bdf8'; context.lineWidth = 3; context.beginPath(); points.forEach((point, index) => index ? context.lineTo(point.x, point.y) : context.moveTo(point.x, point.y)); if (points.length > 2) context.closePath(); context.stroke(); points.forEach((point) => { context.fillStyle = '#facc15'; context.beginPath(); context.arc(point.x, point.y, 6, 0, Math.PI * 2); context.fill(); }); document.getElementById('zone-point-count').textContent = `${points.length} point${points.length === 1 ? '' : 's'}`; }
+redraw();
+canvas.addEventListener('click', (event) => { const bounds = canvas.getBoundingClientRect(); points.push({x: Math.round((event.clientX - bounds.left) * canvas.width / bounds.width), y: Math.round((event.clientY - bounds.top) * canvas.height / bounds.height)}); redraw(); });
+document.getElementById('clear-zone').addEventListener('click', () => { points.length = 0; redraw(); });
+document.getElementById('zone-form').addEventListener('submit', async (event) => { event.preventDefault(); const status = document.getElementById('zone-status'); if (points.length < 3) { status.textContent = 'Draw at least three points first.'; return; } const payload = {camera_id: document.getElementById('zone-camera').value, name: document.getElementById('zone-name').value, zone_type: document.getElementById('zone-type').value, severity: document.getElementById('zone-severity').value, required_ppe: document.getElementById('zone-ppe').value.split(',').map((item) => item.trim()).filter(Boolean), geometry: points}; const response = await fetch('/api/zones', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)}); const body = await response.json(); if (!response.ok) { status.textContent = body.message || 'Unable to save zone.'; return; } window.location.reload(); });
+document.querySelectorAll('.delete-zone').forEach((button) => button.addEventListener('click', async () => { const item = button.closest('[data-zone-id]'); const response = await fetch(`/api/zones/${item.dataset.zoneId}`, {method: 'DELETE'}); if (response.ok) item.remove(); }));
+</script>
+{% endblock %}

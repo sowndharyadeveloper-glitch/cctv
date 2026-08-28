@@ -1,0 +1,47 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <p class="text-uppercase small fw-bold text-danger mb-1">Safety operations</p>
+        <h2 class="fw-bold mb-1">Alert center</h2>
+        <p class="text-muted mb-0">Review, acknowledge, investigate, and resolve safety events.</p>
+    </div>
+    <button class="btn btn-outline-danger" id="demo-alert" type="button">Generate demo alert</button>
+</div>
+<div id="alert-status" class="small mb-3" role="status"></div>
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead><tr><th>Alert</th><th>Location</th><th>Confidence</th><th>Status</th><th>Time</th><th>Actions</th></tr></thead>
+            <tbody id="alert-table">
+            {% for alert in alerts %}
+            <tr data-alert-id="{{ alert.id }}">
+                <td><strong>{{ alert.alert_type|replace('_', ' ')|title }}</strong>{% if alert.simulated %}<span class="badge bg-info text-dark ms-2">DEMO</span>{% endif %}<div class="small text-muted">{{ alert.description }}</div></td>
+                <td>{{ alert.camera_location or alert.camera_name or 'Unassigned' }}</td>
+                <td>{{ alert.confidence }}%</td>
+                <td><span class="badge bg-{{ 'danger' if alert.severity in ['CRITICAL', 'HIGH'] else 'warning' }}">{{ alert.status }}</span></td>
+                <td>{{ alert.created_at }}</td>
+                <td class="text-nowrap"><button class="btn btn-sm btn-outline-primary acknowledge" type="button">Acknowledge</button> <button class="btn btn-sm btn-outline-success resolve" type="button">Resolve</button></td>
+            </tr>
+            {% else %}<tr id="empty-alerts"><td colspan="6" class="text-center text-muted py-5">No safety alerts recorded.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<script>
+const statusBox = document.getElementById('alert-status');
+async function alertAction(id, action) {
+    const response = await fetch(`/api/alerts/${id}/${action}`, {method: 'POST', headers: {'Content-Type': 'application/json'}});
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || 'Alert update failed.');
+    window.location.reload();
+}
+document.querySelectorAll('.acknowledge').forEach((button) => button.addEventListener('click', () => alertAction(button.closest('[data-alert-id]').dataset.alertId, 'acknowledge')));
+document.querySelectorAll('.resolve').forEach((button) => button.addEventListener('click', () => alertAction(button.closest('[data-alert-id]').dataset.alertId, 'resolve')));
+document.getElementById('demo-alert').addEventListener('click', async () => {
+    try { const response = await fetch('/api/demo/alerts', {method: 'POST'}); const body = await response.json(); statusBox.textContent = body.message || 'Demo alert created.'; window.location.reload(); }
+    catch (error) { statusBox.textContent = error.message; }
+});
+</script>
+{% endblock %}
