@@ -1,4 +1,42 @@
-# React + Vite
+# PRESENT SIR frontend
+
+The Vite frontend is deployed independently from the Python attendance backend.
+Set `VITE_API_URL` to the backend's HTTPS origin in Vercel. Do not set it to
+localhost or commit `.env.local`. The backend must be deployed as a persistent
+Flask service with the dependencies in `AI_CCTV_Attendance/requirements.txt`.
+
+Required backend environment variables:
+
+```text
+SECRET_KEY=<long-random-value>
+DATABASE_PATH=<persistent database path>
+CORS_ORIGINS=https://<your-vercel-domain>
+SESSION_COOKIE_SECURE=true
+SESSION_COOKIE_SAMESITE=None
+```
+
+Local production-like check:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -r AI_CCTV_Attendance\requirements.txt
+$env:CORS_ORIGINS='http://localhost:5173'
+$env:SESSION_COOKIE_SECURE='false'
+Push-Location AI_CCTV_Attendance
+..\.venv\Scripts\python.exe app.py
+Pop-Location
+Push-Location cctv
+$env:VITE_API_URL=''
+npm install
+npm run build
+npm run lint
+Pop-Location
+```
+
+The Vercel project root is `cctv`. Configure `VITE_API_URL` in Vercel for
+Preview and Production separately, then redeploy. Vercel hosts the SPA only;
+OpenCV camera access, SQLite persistence, face recognition, and SSE remain on
+the Flask service.
 
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 

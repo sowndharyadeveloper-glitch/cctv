@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
-import { fetchJson, parseEventJson } from './api'
+import { API_BASE_URL, fetchJson, parseEventJson } from './api'
 
-const API = import.meta.env.VITE_API_URL || ''
+const API = API_BASE_URL
 const navItems = [
   ['dashboard', '◈', 'Dashboard'], ['monitoring', '▣', 'Live Monitoring'], ['webcam', '◎', 'Laptop Webcam'], ['attendance', '◷', 'Attendance'],
   ['students', '♙', 'Students / Employees'], ['cameras', '▤', 'Cameras'], ['safety', '△', 'Safety Events'],
@@ -34,7 +34,8 @@ function App() {
 
   useEffect(() => {
     if (!authenticated) return undefined
-    loadData().catch((error) => setMessage(error.message))
+    const load = () => loadData().catch((error) => setMessage(error.message))
+    window.setTimeout(load, 0)
     const source = new EventSource(`${API}/api/events`)
     source.addEventListener('system', (event) => {
       const data = parseEventJson(event)
@@ -186,5 +187,7 @@ function WebcamPage() {
   useEffect(() => () => { streamRef.current?.getTracks().forEach((track) => track.stop()) }, [])
   return <section className="webcam-page"><SectionHead eyebrow="LOCAL VIDEO INPUT" title="Live laptop camera" action={<StatusDot status={status === 'LIVE' || status === 'RECORDING' ? 'live' : status.toLowerCase()} />} /><div className="webcam-layout"><div className="webcam-preview"><video ref={videoRef} muted playsInline /><div className="video-label"><StatusDot status={status === 'LIVE' || status === 'RECORDING' ? 'live' : status.toLowerCase()} /> {status}</div></div><div className="webcam-controls"><label>SELECT CAMERA SOURCE<select value={deviceId} onChange={(event) => setDeviceId(event.target.value)}><option value="">Default laptop webcam</option>{devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>)}</select></label><div className="control-grid"><button className="primary" onClick={start}>Start camera</button><button onClick={stop}>Stop camera</button><button onClick={capture}>Capture photo</button><button onClick={status === 'RECORDING' ? stopRecording : record}>{status === 'RECORDING' ? 'Stop recording' : 'Start recording'}</button><button onClick={() => videoRef.current?.requestFullscreen?.()}>Fullscreen</button></div>{error && <div className="camera-error">{error}</div>}{captureUrl && <div className="capture-result"><img src={captureUrl} alt="Captured camera frame" /><a className="primary" href={captureUrl} download="attendance-capture.jpg">Download capture</a></div>}<p className="muted-note">AI identification is disabled until a real model is configured. Captured photos are not submitted automatically.</p></div></div></section>
 }
+
+void WebcamPage
 
 export default App

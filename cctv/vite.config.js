@@ -5,11 +5,12 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '127.0.0.1',
     proxy: {
-      '/api': 'http://127.0.0.1:5000',
-      '/export-csv': 'http://127.0.0.1:5000',
-      '/export-excel': 'http://127.0.0.1:5000',
-      '/export-pdf': 'http://127.0.0.1:5000',
+      '/api': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
+      '/export-csv': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
+      '/export-excel': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
+      '/export-pdf': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
     },
   },
 })

@@ -7,6 +7,13 @@ export class ApiError extends Error {
   }
 }
 
+const configuredApiUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '')
+const isProduction = import.meta.env.PROD
+if (isProduction && /localhost|127\.0\.0\.1/i.test(configuredApiUrl)) {
+  throw new Error('VITE_API_URL cannot point to localhost in production.')
+}
+export const API_BASE_URL = configuredApiUrl
+
 export async function fetchJson(path, options = {}) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), options.timeout ?? 10000)
@@ -14,7 +21,7 @@ export async function fetchJson(path, options = {}) {
   delete requestOptions.timeout
 
   try {
-    const response = await fetch(path, requestOptions)
+    const response = await fetch(path, { credentials: 'include', ...requestOptions })
     const contentType = response.headers.get('content-type') || ''
     const text = await response.text()
     let body = null

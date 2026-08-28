@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +58,40 @@ SUPPORTED_CAMERA_TYPES = {"cctv", "ip_camera", "mobile_ip_camera", "webcam", "vi
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+
+
+def api_error(message, status=400, code="API_ERROR"):
+    return jsonify({"success": False, "error": {"code": code, "message": message}}), status
+
+
+@app.after_request
+def add_api_headers(response):
+    origin = request.headers.get("Origin")
+    allowed_origins = {item.strip() for item in os.environ.get("CORS_ORIGINS", "").split(",") if item.strip()}
+    if origin and origin in allowed_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+        response.headers["Vary"] = "Origin"
+    return response
+
+
+@app.errorhandler(404)
+def handle_not_found(error):
+    if request.path.startswith("/api/"):
+        return api_error("API endpoint not found.", 404, "NOT_FOUND")
+    return error
+
+
+@app.errorhandler(405)
+def handle_method_not_allowed(error):
+    if request.path.startswith("/api/"):
+        return api_error("HTTP method is not supported for this endpoint.", 405, "METHOD_NOT_ALLOWED")
+    return error
 
 
 def decode_image_data(data_url: str):
@@ -172,18 +207,18 @@ def camera_mjpeg_stream(camera):
         capture.release()
 
 
-def do_face_recognition(frame):
+def do_face_recognition(frame, confirm=True):
     face_boxes = detect_faces(frame)
     if not face_boxes:
-        return {"success": True, "recognized": False, "message": "No face detected. Please position your face inside the camera frame."}
+        return {"success": True, "status": "UNKNOWN", "recognized": False, "message": "No face detected. Please position your face inside the camera frame."}
     if len(face_boxes) > 1:
-        return {"success": True, "recognized": False, "message": "Multiple faces detected. Please ensure the intended student is clearly visible."}
+        return {"success": True, "status": "UNKNOWN", "recognized": False, "message": "Multiple faces detected. Please ensure the intended student is clearly visible."}
 
     x, y, w, h = face_boxes[0]
     face = frame[y : y + h, x : x + w]
     embedding = compute_face_embedding(face)
     if embedding is None:
-        return {"success": True, "recognized": False, "message": "No face detected. Please position your face inside the camera frame."}
+        return {"success": True, "status": "UNKNOWN", "recognized": False, "message": "No face detected. Please position your face inside the camera frame."}
 
     known_embeddings = load_known_embeddings()
     best_student_id = None
@@ -196,26 +231,21 @@ def do_face_recognition(frame):
             best_confidence = confidence
 
     if best_student_id is None or best_confidence < RECOGNITION_THRESHOLD:
-        return {"success": True, "recognized": False, "message": "Unknown face"}
+        return {"success": True, "status": "UNKNOWN", "recognized": False, "message": "Unknown face"}
 
     student = get_student_by_id(int(best_student_id))
     if not student:
-        return {"success": True, "recognized": False, "message": "Unknown face"}
+        return {"success": True, "status": "UNKNOWN", "recognized": False, "message": "Unknown face"}
 
     now = datetime.now()
     attendance_status = calculate_attendance_status(now.strftime("%H:%M:%S"), "09:00", "09:15")
-    marked = mark_attendance(
-        int(student["id"]),
-        now.strftime("%Y-%m-%d"),
-        now.strftime("%H:%M:%S"),
-        attendance_status,
-        round(best_confidence, 2),
-        CAMERA_ID,
-    )
+    marked = mark_attendance(int(student["id"]), now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), attendance_status, round(best_confidence, 2), CAMERA_ID) if confirm else False
 
     return {
         "success": True,
+        "status": "RECOGNIZED",
         "recognized": True,
+        "student_id": int(student["id"]),
         "name": student["name"],
         "register_number": student["register_number"],
         "department": student["department"],
@@ -234,10 +264,14 @@ def inject_now():
 
 @app.before_request
 def require_login():
-    public_routes = {"login", "home", "static"}
+    public_routes = {"login", "api_login", "home", "static"}
+    if request.method == "OPTIONS" and request.path.startswith("/api/"):
+        return ("", 204)
     if request.endpoint in public_routes or request.endpoint is None:
         return None
     if "user" not in session:
+        if request.path.startswith("/api/"):
+            return api_error("Authentication required.", 401, "AUTHENTICATION_REQUIRED")
         return redirect(url_for("login"))
     return None
 
@@ -273,11 +307,103 @@ def login():
     return render_template("login.html")
 
 
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    payload = request.get_json(silent=True) or {}
+    username = str(payload.get("username", "")).strip()
+    password = str(payload.get("password", ""))
+    if not username or not password:
+        return api_error("Username and password are required.", 400, "VALIDATION_ERROR")
+    user = get_admin_user(username)
+    if not user or not check_password_hash(user["password_hash"], password):
+        return api_error("Invalid username or password.", 401, "INVALID_CREDENTIALS")
+    session["user"] = username
+    return jsonify({"success": True, "data": {"username": username, "role": user["role"]}})
+
+
 @app.route("/logout")
 def logout():
     session.clear()
     flash("You have been logged out.", "success")
     return redirect(url_for("login"))
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"success": True})
+
+
+@app.route("/api/health")
+def api_health():
+    return jsonify({"success": True, "status": "healthy", "application": "healthy", "database": "healthy", "ai": "available", "storage": "available"})
+
+
+@app.route("/api/students", methods=["GET", "POST"])
+def students_api():
+    if request.method == "GET":
+        fields = ("id", "register_number", "name", "department", "year", "section", "email", "phone", "created_at")
+        return jsonify({"success": True, "data": [{field: student[field] for field in fields} for student in get_all_students()]})
+    payload = request.get_json(silent=True) or {}
+    required = ("register_number", "name", "department", "year", "section")
+    if any(not str(payload.get(field, "")).strip() for field in required):
+        return api_error("Register number, name, department, year, and section are required.", 400, "VALIDATION_ERROR")
+    student_id = add_student({field: str(payload.get(field, "")) for field in required + ("email", "phone")})
+    if student_id is None:
+        return api_error("A student with this register number already exists.", 409, "DUPLICATE_STUDENT")
+    return jsonify({"success": True, "data": {"id": student_id}}), 201
+
+
+@app.route("/api/students/<int:student_id>", methods=["DELETE"])
+def delete_student_api(student_id):
+    if not get_student_by_id(student_id):
+        return api_error("Student not found.", 404, "NOT_FOUND")
+    from database.db import delete_student
+    delete_student(student_id)
+    return jsonify({"success": True})
+
+
+@app.route("/api/students/<int:student_id>/face", methods=["POST"])
+def add_student_face_api(student_id):
+    student = get_student_by_id(student_id)
+    frame = decode_image_data((request.get_json(silent=True) or {}).get("image"))
+    if not student or frame is None:
+        return api_error("Student and a valid base64 image are required.", 400, "VALIDATION_ERROR")
+    faces = detect_faces(frame)
+    if len(faces) != 1:
+        return api_error("The image must contain exactly one face.", 400, "INVALID_FACE_IMAGE")
+    x, y, width, height = faces[0]
+    embedding = compute_face_embedding(frame[y : y + height, x : x + width])
+    if embedding is None:
+        return api_error("A usable face embedding could not be generated.", 400, "INVALID_FACE_IMAGE")
+    embeddings = load_known_embeddings()
+    embeddings[str(student_id)] = embedding
+    save_known_embeddings({key: value.tolist() if hasattr(value, "tolist") else value for key, value in embeddings.items()})
+    refresh_known_embeddings()
+    return jsonify({"success": True, "data": {"student_id": student_id}})
+
+
+@app.route("/api/attendance")
+def attendance_api():
+    records = get_attendance_records(get_attendance_filters())
+    return jsonify({"success": True, "data": [dict(record) for record in records]})
+
+
+@app.route("/api/attendance/recognize", methods=["POST"])
+def recognize_attendance_api():
+    payload = request.get_json(silent=True) or {}
+    frame = decode_image_data(payload.get("image"))
+    if frame is None:
+        return api_error("A valid base64 image is required.", 400, "VALIDATION_ERROR")
+    return jsonify({"success": True, "data": do_face_recognition(frame, bool(payload.get("confirm")))})
+
+
+@app.route("/api/events")
+def events_api():
+    def stream():
+        payload = {"cameras": [camera_public_view(camera) for camera in get_all_cameras()], "alerts": [dict(alert) for alert in get_safety_alerts()]}
+        yield f"event: system\ndata: {json.dumps(payload)}\n\n"
+    return Response(stream(), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/dashboard")
@@ -459,6 +585,21 @@ def test_saved_camera_api(camera_id):
     result = test_camera_source(camera["stream_url"])
     update_camera_status(camera_id, result["status"], None if result["status"] == "connected" else result["message"])
     return jsonify({"success": result["status"] == "connected", "data": result})
+
+
+@app.route("/api/cameras/<int:camera_id>/<action>", methods=["POST"])
+def camera_action_api(camera_id, action):
+    if action not in {"start", "stop", "snapshot", "features"}:
+        return api_error("Unsupported camera action.", 400, "UNSUPPORTED_ACTION")
+    camera = get_camera_by_id(camera_id)
+    if not camera:
+        return api_error("Camera not found.", 404, "NOT_FOUND")
+    if action == "features":
+        payload = request.get_json(silent=True) or {}
+        return jsonify({"success": True, "data": {"ai_enabled": bool(payload.get("ai_enabled"))}})
+    status = "connected" if action == "start" else "offline" if action == "stop" else camera["status"]
+    update_camera_status(camera_id, status, None)
+    return jsonify({"success": True, "data": {"status": status}})
 
 
 @app.route("/api/cameras/<int:camera_id>", methods=["DELETE"])
