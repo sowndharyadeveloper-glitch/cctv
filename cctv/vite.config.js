@@ -8,9 +8,7 @@ export default defineConfig({
     host: '127.0.0.1',
     proxy: {
       '/api': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
-      '/export-csv': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
-      '/export-excel': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
-      '/export-pdf': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
+      '/download-attendance': process.env.BACKEND_API_URL || 'http://127.0.0.1:5000',
     },
   },
 })
