@@ -11,7 +11,7 @@ const rawApiUrl = import.meta.env.VITE_API_URL
 export const API_URL = (rawApiUrl || '').trim().replace(/\/+$/, '')
 export const API_BASE_URL = API_URL
 const productionApiConfigurationError = import.meta.env.PROD && (!API_URL || !/^https:\/\//i.test(API_URL) || /localhost|127\.0\.0\.1/i.test(API_URL))
-const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 90000 : 10000
+const DEFAULT_TIMEOUT_MS = 5000
 
 export async function fetchJson(path, options = {}) {
   if (productionApiConfigurationError) {
